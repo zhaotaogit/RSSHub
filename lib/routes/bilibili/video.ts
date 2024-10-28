@@ -31,47 +31,55 @@ export const route: Route = {
 
 async function handler(ctx) {
     const uid = ctx.req.param('uid');
-    const disableEmbed = ctx.req.param('disableEmbed');
-    const cookie = await cache.getCookie();
-    const wbiVerifyString = await cache.getWbiVerifyString();
-    const dmImgList = utils.getDmImgList();
-    const dmImgInter = utils.getDmImgInter();
-    const renderData = await cache.getRenderData(uid);
-    const [name, face] = await cache.getUsernameAndFaceFromUID(uid);
+    // const disableEmbed = ctx.req.param('disableEmbed');
+    // const cookie = await cache.getCookie();
+    // const wbiVerifyString = await cache.getWbiVerifyString();
+    // const dmImgList = utils.getDmImgList();
+    // const dmImgInter = utils.getDmImgInter();
+    // const renderData = await cache.getRenderData(uid);
+    // const [name, face] = await cache.getUsernameAndFaceFromUID(uid);
 
-    const params = utils.addWbiVerifyInfo(
-        utils.addRenderData(utils.addDmVerifyInfoWithInter(`mid=${uid}&ps=30&tid=0&pn=1&keyword=&order=pubdate&platform=web&web_location=1550101&order_avoided=true`, dmImgList, dmImgInter), renderData),
-        wbiVerifyString
-    );
-    const response = await got(`https://api.bilibili.com/x/space/wbi/arc/search?${params}`, {
+    // const params = utils.addWbiVerifyInfo(
+    //     utils.addRenderData(utils.addDmVerifyInfoWithInter(`mid=${uid}&ps=30&tid=0&pn=1&keyword=&order=pubdate&platform=web&web_location=1550101&order_avoided=true`, dmImgList, dmImgInter), renderData),
+    //     wbiVerifyString
+    // );
+    const response = await got(`https://api.vc.bilibili.com/dynamic_svr/v1/dynamic_svr/space_history?host_uid=${uid}&need_top=1`, {
         headers: {
             Referer: `https://space.bilibili.com/${uid}/video?tid=0&pn=1&keyword=&order=pubdate`,
-            Cookie: cookie,
+            referer:'https://m.bilibili.com/',
+            origin:'https://m.bilibili.com/'
         },
     });
-    const data = response.data;
-    if (data.code) {
-        logger.error(JSON.stringify(data.data));
-        throw new Error(`Got error code ${data.code} while fetching: ${data.message}`);
-    }
+    const data = response.data.data;
 
+
+    const name = data.cards[0].desc.user_profile.info.uname;
+    const face = data.cards[0].desc.user_profile.info.face;
     return {
         title: `${name} 的 bilibili 空间`,
         link: `https://space.bilibili.com/${uid}`,
         description: `${name} 的 bilibili 空间`,
         logo: face,
         icon: face,
-        item:
-            data.data &&
-            data.data.list &&
-            data.data.list.vlist &&
-            data.data.list.vlist.map((item) => ({
-                title: item.title,
-                description: `${item.description}${disableEmbed ? '' : `<br><br>${utils.iframe(item.aid)}`}<br><img src="${item.pic}">`,
-                pubDate: new Date(item.created * 1000).toUTCString(),
-                link: item.created > utils.bvidTime && item.bvid ? `https://www.bilibili.com/video/${item.bvid}` : `https://www.bilibili.com/video/av${item.aid}`,
-                author: name,
-                comments: item.comment,
-            })),
+        item: data.cards.map(item => {
+            let card = item.card;
+            try {
+                card = JSON.parse(card);
+                if (card.videos === 1){
+                    return {
+                        title: card.title,
+                        description: `${card.desc}<br><br>${utils.iframe(card.aid)}<br><img src="${card.pic}">`,
+                        pubDate: new Date(card.pubdate * 1000).toUTCString(),
+                        link: `https://www.bilibili.com/video/${item.desc.bvid}`,
+                        author: name, // 确保 name 已定义
+                        comments: item.desc.comment,
+                    };
+                }
+                return null;
+            } catch (error) {
+                logger.error(error);
+                return null; // Return null or handle the error as needed
+            }
+        })
     };
 }
